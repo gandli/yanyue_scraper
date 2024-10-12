@@ -1,152 +1,157 @@
 from selenium import webdriver
-from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.common.by import By
-from urllib.parse import urljoin
+from bs4 import BeautifulSoup
 import time
 
 
-def init_driver():
-    """初始化 Chrome 驱动"""
-    # 设置 Chrome 驱动路径
-    service = Service("chromedriver.exe")  # 根据你的路径设置
-    chrome_options = Options()
-
-    # 配置伪装头和反爬选项
-    chrome_options.add_argument("--disable-blink-features=AutomationControlled")
-    chrome_options.add_argument(
-        "user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/85.0.4183.102 Safari/537.36"
-    )
-    # chrome_options.add_argument("--headless")  # 如果不想打开浏览器界面可以加上这行
-
-    # 初始化浏览器
-    return webdriver.Chrome(service=service, options=chrome_options)
-
-
-def get_all_brands(driver):
-    """从分类页面抓取所有品牌的名称和链接"""
-    url = "https://www.yanyue.cn/tobacco"
+def fetch_brand_details(driver, brand_url, page_number=None):
+    """使用Selenium从品牌页面抓取品牌介绍和品名列表"""
     try:
-        # 访问页面
-        driver.get(url)
-        time.sleep(5)  # 等待页面加载完成
+        if page_number:
+            brand_url = f"{brand_url}/p/{page_number}"
 
-        # 初始化品牌分类和品牌列表
-        categories = {
-            "mainland": "大陆品牌",
-            "foreign": "国外品牌",
-            "HKMT": "港澳台品牌",
-            "history": "历史品牌",
-        }
-        all_brands = []
-
-        # 遍历每个品牌分类的 id 和名称
-        for tab_id, category_name in categories.items():
-            print(f"\n正在处理分类：{category_name}")
-
-            try:
-                # 查找与当前分类 id 对应的 div
-                brand_section = driver.find_element(By.ID, tab_id)
-
-                # 查找该 div 下的所有 ul 标签
-                ul_elements = brand_section.find_elements(By.TAG_NAME, "ul")
-
-                # 遍历每个 ul
-                for ul in ul_elements:
-                    # 在每个 ul 中找到所有 li 标签
-                    list_items = ul.find_elements(By.TAG_NAME, "li")
-                    for item in list_items:
-                        # 在每个 li 中找到 a 标签
-                        brand = item.find_element(By.TAG_NAME, "a")
-                        brand_name = brand.get_attribute("title")  # 获取卷烟品牌名称
-                        brand_url = brand.get_attribute("href")  # 获取品牌链接
-
-                        if brand_name and brand_url:
-                            full_brand_url = urljoin(
-                                "https://www.yanyue.cn/", brand_url
-                            )
-                            all_brands.append(
-                                {
-                                    "category": category_name,
-                                    "name": brand_name,
-                                    "url": full_brand_url,
-                                }
-                            )
-            except Exception as e:
-                print(f"无法处理分类 {category_name}: {e}")
-
-        return all_brands
-
-    except Exception as e:
-        print(f"发生错误: {e}")
-        return []
-
-def get_brand_products(driver, brand_url):
-    """从品牌页面抓取该品牌下的所有品名和其他详细信息"""
-    try:
-        # 访问品牌页面
         driver.get(brand_url)
         time.sleep(3)  # 等待页面加载完成
 
-        product_list = []
+        soup = BeautifulSoup(driver.page_source, "html.parser")
 
-        # 查找产品信息部分
-        product_sections = driver.find_elements(By.CLASS_NAME, "table clearfix")
+        brand_intro_section = soup.find("div", class_="desparea")
+        if brand_intro_section:
+            brand_name = (
+                brand_intro_section.find("h3").get_text(strip=True)
+                if brand_intro_section.find("h3")
+                else "未知品牌"
+            )
+            brand_intro = (
+                brand_intro_section.find("div", class_="desparea_content").get_text(
+                    strip=True
+                )
+                if brand_intro_section.find("div", class_="desparea_content")
+                else "无介绍"
+            )
+            print(f"品牌名称: {brand_name}")
+            print(f"品牌介绍: {brand_intro}")
+        else:
+            print("未找到品牌介绍")
+
+        product_list = []
+        product_sections = soup.find_all("div", class_="table clearfix")
 
         if product_sections:
             for product_section in product_sections:
-                # 获取品名、类型、焦油含量、价格等信息
-                product_name = product_section.find_element(By.CLASS_NAME, "name2").text
-                product_type = product_section.find_element(By.CLASS_NAME, "type2").text
-                tar_content = product_section.find_element(By.CLASS_NAME, "tar2").text
-                price = product_section.find_element(By.CLASS_NAME, "price2").text
+                product_name = (
+                    product_section.find("div", class_="name2").get_text(strip=True)
+                    if product_section.find("div", class_="name2")
+                    else None
+                )
+                product_type = (
+                    product_section.find("div", class_="type2").get_text(strip=True)
+                    if product_section.find("div", class_="type2")
+                    else None
+                )
+                tar_content = (
+                    product_section.find("div", class_="tar2").get_text(strip=True)
+                    if product_section.find("div", class_="tar2")
+                    else None
+                )
+                price = (
+                    product_section.find("div", class_="price2").get_text(strip=True)
+                    if product_section.find("div", class_="price2")
+                    else None
+                )
 
-                # 获取评分信息
-                subcontents = product_section.find_elements(By.CLASS_NAME, "subcontent3")
-                taste_score = subcontents[0].find_element(By.CLASS_NAME, "c").text
-                appearance_score = subcontents[1].find_element(By.CLASS_NAME, "c").text
-                overall_score = subcontents[2].find_element(By.CLASS_NAME, "c").text
+                # 获取详情页URL
+                more_info_section = product_section.find("div", class_="more")
+                product_url = (
+                    more_info_section.find("a")["href"]
+                    if more_info_section and more_info_section.find("a")
+                    else None
+                )
+                full_product_url = (
+                    f"https://www.yanyue.cn{product_url}" if product_url else None
+                )
 
-                product_list.append({
-                    "品名": product_name,
-                    "类型": product_type,
-                    "焦油含量": tar_content,
-                    "价格": price,
-                    "口味评分": taste_score,
-                    "外观评分": appearance_score,
-                    "综合评分": overall_score
-                })
+                # 确保评分部分存在
+                subcontents = product_section.find_all("div", class_="subcontent3")
+                taste_score = (
+                    subcontents[0].find("div", class_="c").get_text(strip=True)
+                    if len(subcontents) > 0 and subcontents[0].find("div", class_="c")
+                    else None
+                )
+                appearance_score = (
+                    subcontents[1].find("div", class_="c").get_text(strip=True)
+                    if len(subcontents) > 1 and subcontents[1].find("div", class_="c")
+                    else None
+                )
+                overall_score = (
+                    subcontents[2].find("div", class_="c").get_text(strip=True)
+                    if len(subcontents) > 2 and subcontents[2].find("div", class_="c")
+                    else None
+                )
 
-        return product_list
+                if product_name and product_type and tar_content and price:
+                    product_list.append(
+                        {
+                            "品名": product_name,
+                            "类型": product_type,
+                            "焦油含量": tar_content,
+                            "价格": price,
+                            "详情页": full_product_url
+                            if full_product_url
+                            else "无详情页",
+                            "口味评分": taste_score if taste_score else "无评分",
+                            "外观评分": appearance_score
+                            if appearance_score
+                            else "无评分",
+                            "综合评分": overall_score if overall_score else "无评分",
+                        }
+                    )
+
+        if product_list:
+            for product in product_list:
+                print(f"\n品名: {product['品名']}")
+                print(
+                    f"类型: {product['类型']}, 焦油含量: {product['焦油含量']}, 价格: {product['价格']}"
+                )
+                print(f"详情页: {product['详情页']}")
+                print(
+                    f"口味评分: {product['口味评分']}, 外观评分: {product['外观评分']}, 综合评分: {product['综合评分']}"
+                )
+        else:
+            print("未找到任何有效的品名信息")
+
+        pagination_info = soup.find("nav", class_="pagenav_mainarea")
+        if pagination_info:
+            total_pages = pagination_info.find(
+                "span", class_="pagenav_totalnum"
+            ).get_text(strip=True)
+            return int(total_pages)
+
+        return None
 
     except Exception as e:
-        print(f"无法抓取品牌页面 {brand_url}: {e}")
-        return []
+        print(f"发生错误: {e}")
+        return None
 
 
 def main():
-    # 初始化 Selenium 驱动
-    driver = init_driver()
+    # 配置 Selenium 的无头浏览器
+    options = Options()
+    options.add_argument("--headless")
+    options.add_argument("--disable-gpu")
+    driver = webdriver.Chrome(options=options)
 
     try:
-        # 第一步：获取所有品牌
-        all_brands = get_all_brands(driver)
+        base_brand_url = "https://www.yanyue.cn/sort/14"  # 示例品牌页面
 
-        # 第二步：抓取每个品牌页面的所有品名信息
-        for brand in all_brands:
-            print(f"\n正在抓取品牌: {brand['name']}")
-            products = get_brand_products(driver, brand['url'])
+        # 抓取第一页并获取总页数
+        total_pages = fetch_brand_details(driver, base_brand_url)
 
-            if products:
-                print(f"{brand['name']} 共有 {len(products)} 个产品:")
-                for product in products:
-                    print(
-                        f"品名: {product['品名']}, 类型: {product['类型']}, 焦油含量: {product['焦油含量']}, 价格: {product['价格']}, "
-                        f"口味评分: {product['口味评分']}, 外观评分: {product['外观评分']}, 综合评分: {product['综合评分']}"
-                    )
-
+        if total_pages:
+            for page in range(2, total_pages + 1):
+                fetch_brand_details(driver, base_brand_url, page)
     finally:
-        driver.quit()  # 关闭浏览器
+        driver.quit()
 
 
 if __name__ == "__main__":
