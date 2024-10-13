@@ -221,8 +221,6 @@ def download_images_from_json(json_file, save_dir):
 def main():
     # 设置Selenium的Chrome选项
     chrome_options = Options()
-    # 注释掉无头模式
-    # chrome_options.add_argument("--headless")
     chrome_options.add_argument("--disable-gpu")  # 禁用GPU
 
     driver = webdriver.Chrome(options=chrome_options)
@@ -232,16 +230,23 @@ def main():
     all_brands = fetch_all_brands(driver)
     save_to_json(all_brands, "data/all_brands.json")
 
+    # 存储所有产品信息
+    all_products = []
+
     # 对每个品牌的产品信息进行抓取
     for brand in all_brands:
         brand_name = brand["name"]
         brand_url = brand["url"]
         print(f"\n开始抓取品牌 {brand_name} 的产品信息...")
         products = fetch_brand_products(driver, brand_url)
+        all_products.extend(products)
 
         # 保存品牌产品信息
         filename = f"{brand_name}_products.json"
         save_to_json(products, f"data/{filename}")
+
+    # 保存所有产品信息到 all_products.json
+    save_to_json(all_products, "data/all_products.json")
 
     # 关闭浏览器
     driver.quit()
@@ -249,9 +254,9 @@ def main():
     # 下载所有产品图片
     for brand in all_brands:
         brand_name = brand["name"]
-        json_file = f"{brand_name}_products.json"
+        json_file = f"data/{brand_name}_products.json"
         print(f"\n开始下载 {brand_name} 的图片...")
-        download_images_from_json(json_file, "images")
+        download_images_from_json(json_file, f"images/{brand_name}")
 
 
 if __name__ == "__main__":
