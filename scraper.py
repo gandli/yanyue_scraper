@@ -6,6 +6,9 @@ from bs4 import BeautifulSoup
 from urllib.parse import urljoin
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.common.by import By
 
 
 # 下载图片到本地目录的函数
@@ -36,11 +39,13 @@ def download_image(img_url, save_dir):
 
 # 从品牌页面抓取产品列表并处理分页的函数
 def fetch_brand_products(driver, brand_url):
-    """从品牌页面抓取所有页码的产品列表并下载图片"""
-    driver.get(brand_url)
-    time.sleep(3)  # 等待页面加载完成
-
+    """从品牌页面抓取所有页码的产品列表"""
     all_products = []
+    current_page = 1
+
+    # 加载品牌页面
+    driver.get(brand_url)
+    time.sleep(10)  # 等待页面加载
 
     while True:
         # 解析当前页面的产品信息
@@ -48,49 +53,32 @@ def fetch_brand_products(driver, brand_url):
         product_list = []
         product_sections = soup.find_all("div", class_="table clearfix")
 
+        # 提取产品信息
         if product_sections:
             for product_section in product_sections:
-                # 获取品名
                 product_name = (
                     product_section.find("div", class_="name2").get_text(strip=True)
-                    if product_section.find("div", class_="name2")
+                    if product_section.find("div", "name2")
                     else None
                 )
-                # 如果没有品名，跳过当前循环
                 if not product_name:
                     continue
 
-                # 获取图片URL
                 img_tag = product_section.find("div", class_="img2").find("img")
                 img_url = img_tag.get("src") if img_tag else None
-                
-                # 下载图片到本地目录并获取本地路径
-                img_local_path = (
-                    download_image(img_url, "./images") if img_url else "无图片"
-                )
-
-                # 获取品名和其他信息
-                product_name = (
-                    product_section.find("div", class_="name2").get_text(strip=True)
-                    if product_section.find("div", class_="name2")
-                    else None
-                )
-                if not product_name:
-                    continue
-
                 product_type = (
                     product_section.find("div", class_="type2").get_text(strip=True)
-                    if product_section.find("div", class_="type2")
+                    if product_section.find("div", "type2")
                     else None
                 )
                 tar_content = (
                     product_section.find("div", class_="tar2").get_text(strip=True)
-                    if product_section.find("div", class_="tar2")
+                    if product_section.find("div", "tar2")
                     else None
                 )
                 price = (
                     product_section.find("div", class_="price2").get_text(strip=True)
-                    if product_section.find("div", class_="price2")
+                    if product_section.find("div", "price2")
                     else None
                 )
                 more_info_section = product_section.find("div", class_="more")
@@ -129,26 +117,25 @@ def fetch_brand_products(driver, brand_url):
                         "口味评分": taste_score or "无评分",
                         "外观评分": appearance_score or "无评分",
                         "综合评分": overall_score or "无评分",
-                        "图片路径": img_local_path or "无图片",
+                        "图片链接": img_url or "无图片",
                     }
                 )
                 print(
-                    f"找到产品：{product_name}, 类型: {product_type}, 焦油含量: {tar_content}, 价格: {price}, 图片: {img_local_path}"
+                    f"找到产品：{product_name}, 类型: {product_type}, 焦油含量: {tar_content}, 价格: {price}, 图片: {img_url}"
                 )
 
         all_products.extend(product_list)
 
-        # 检查是否有“下一页”按钮
-        next_page_button = (
-            soup.find("li", class_="page-item")
-            .find_next("li", class_="page-item")
-            .find("a", string="下一页")
-        )
-        if next_page_button:
-            next_page_url = urljoin(brand_url, next_page_button["href"])
-            driver.get(next_page_url)
-            time.sleep(3)  # 等待下一页加载完成
-        else:
+        # 找到并点击下一页链接
+        try:
+            next_page_link = WebDriverWait(driver, 10).until(
+                EC.element_to_be_clickable((By.LINK_TEXT, "下一页"))
+            )
+            print(f"点击下一页: {next_page_link.get_attribute('href')}")
+            next_page_link.click()
+            time.sleep(10)  # 等待页面加载
+        except Exception as e:
+            print("没有找到下一页，抓取结束")
             break
 
     return all_products
@@ -159,7 +146,7 @@ def fetch_all_brands(driver):
     """抓取所有品牌的链接和名称"""
     base_url = "https://www.yanyue.cn/tobacco"
     driver.get(base_url)
-    time.sleep(3)  # 等待页面加载完成
+    time.sleep(10)  # 等待页面加载完成
 
     soup = BeautifulSoup(driver.page_source, "html.parser")
 
@@ -216,6 +203,20 @@ def save_to_json(data, filename):
     print(f"数据保存到 {filename} 完成")
 
 
+# 从 JSON 文件中读取产品数据并下载图片的函数
+def download_images_from_json(json_file, save_dir):
+    """从 JSON 文件中读取产品数据并下载图片"""
+    with open(json_file, "r", encoding="utf-8") as f:
+        products = json.load(f)
+
+    for product in products:
+        img_url = product.get("图片链接")
+        if img_url and img_url != "无图片":
+            download_image(img_url, save_dir)
+        else:
+            print(f"{product['品名']} 无图片")
+
+
 # 主程序入口
 def main():
     # 设置Selenium的Chrome选项
@@ -229,7 +230,7 @@ def main():
     # 抓取所有品牌信息
     print("开始抓取所有品牌信息...")
     all_brands = fetch_all_brands(driver)
-    save_to_json(all_brands, "all_brands.json")
+    save_to_json(all_brands, "data/all_brands.json")
 
     # 对每个品牌的产品信息进行抓取
     for brand in all_brands:
@@ -240,10 +241,17 @@ def main():
 
         # 保存品牌产品信息
         filename = f"{brand_name}_products.json"
-        save_to_json(products, filename)
+        save_to_json(products, f"data/{filename}")
 
     # 关闭浏览器
     driver.quit()
+
+    # 下载所有产品图片
+    for brand in all_brands:
+        brand_name = brand["name"]
+        json_file = f"{brand_name}_products.json"
+        print(f"\n开始下载 {brand_name} 的图片...")
+        download_images_from_json(json_file, "images")
 
 
 if __name__ == "__main__":
