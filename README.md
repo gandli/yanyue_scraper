@@ -1,6 +1,6 @@
 # 烟悦网卷烟产品信息抓取器
 
-本项目通过 Selenium 和 BeautifulSoup 从烟悦网抓取卷烟品牌及其产品信息，并下载产品图片。
+本项目通过 Selenium 和 BeautifulSoup 从[烟悦网](https://www.yanyue.cn/)抓取卷烟品牌及其产品信息，并下载产品图片。
 
 ## 功能
 
